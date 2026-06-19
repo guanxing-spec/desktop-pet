@@ -1,0 +1,106 @@
+import * as PIXI from 'pixi.js'
+import { Live2DModel, cubism4Ready } from 'pixi-live2d-display/cubism4'
+import { ref } from 'vue'
+
+export type Live2DMotion = 'Idle' | 'TapBody'
+
+export function useLive2DRenderer() {
+  let app: PIXI.Application | null = null
+  let model: Live2DModel | null = null
+  let _isReady = false
+  const initError = ref<string | null>(null)
+
+  async function init(canvasEl: HTMLCanvasElement, modelUrl: string): Promise<boolean> {
+    try {
+      await cubism4Ready()
+
+      app = new PIXI.Application({
+        view: canvasEl,
+        backgroundAlpha: 0,
+        resizeTo: window,
+        antialias: true,
+        resolution: window.devicePixelRatio || 1,
+        autoDensity: true,
+      })
+
+      // Expose PIXI globally so pixi-live2d-display can find Ticker for auto-update
+      ;(window as any).PIXI = PIXI
+
+      model = await Live2DModel.from(modelUrl, { autoInteract: false })
+      app.stage.addChild(model)
+
+      model.anchor.set(0.5, 0.5)
+      const scale = Math.min(window.innerWidth, window.innerHeight) / 1200
+      model.scale.set(Math.max(0.2, scale * 0.35))
+
+      // Auto-center on resize
+      const reposition = () => {
+        if (!model) return
+        model.position.set(window.innerWidth / 2, window.innerHeight * 0.45)
+      }
+      reposition()
+      window.addEventListener('resize', reposition)
+
+      // Start idle
+      _playMotion('Idle')
+
+      _isReady = true
+      initError.value = null
+      return true
+    } catch (err) {
+      const msg = err instanceof Error ? `${err.name}: ${err.message}` : String(err)
+      console.error('Live2D init failed:', err)
+      initError.value = msg
+      _isReady = false
+      return false
+    }
+  }
+
+  function _playMotion(name: string) {
+    if (!model || !_isReady) return
+    try {
+      model.motion(name)
+    } catch {
+      // motion not found — ignore
+    }
+  }
+
+  function playMotion(action: Live2DMotion) {
+    _playMotion(action)
+  }
+
+  function returnToIdle() {
+    _playMotion('Idle')
+  }
+
+  function setMousePos(x: number, y: number) {
+    if (!model || !_isReady) return
+    const dx = (x - window.innerWidth / 2) / (window.innerWidth / 2)
+    const dy = (y - window.innerHeight * 0.45) / (window.innerHeight / 2)
+    const m = model as any
+    m.setParameterValueById('ParamMouseX', dx * 30)
+    m.setParameterValueById('ParamAngleX', dx * 15)
+    m.setParameterValueById('ParamMouseY', dy * 30)
+    m.setParameterValueById('ParamAngleY', dy * 15)
+  }
+
+  function destroy() {
+    window.removeEventListener('resize', () => {})
+    if (app) {
+      app.destroy(true, { children: true })
+      app = null
+    }
+    model = null
+    _isReady = false
+  }
+
+  return {
+    init,
+    playMotion,
+    returnToIdle,
+    setMousePos,
+    destroy,
+    get isReady() { return _isReady },
+    get error() { return initError },
+  }
+}
