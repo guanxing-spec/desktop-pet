@@ -29,14 +29,18 @@ export function useLive2DRenderer() {
       model = await Live2DModel.from(modelUrl, { autoInteract: false })
       app.stage.addChild(model)
 
+      // Auto-scale to fit window — read model's actual canvas size
+      const iw = (model as any).internalModel?.originalWidth ?? 600
+      const ih = (model as any).internalModel?.originalHeight ?? 800
+      const scaleX = (window.innerWidth * 0.6) / iw
+      const scaleY = (window.innerHeight * 0.6) / ih
       model.anchor.set(0.5, 0.5)
-      const scale = Math.min(window.innerWidth, window.innerHeight) / 1200
-      model.scale.set(Math.max(0.2, scale * 0.35))
+      model.scale.set(Math.max(0.06, Math.min(scaleX, scaleY, 0.4)))
 
       // Auto-center on resize
       const reposition = () => {
         if (!model) return
-        model.position.set(window.innerWidth / 2, window.innerHeight * 0.45)
+        model.position.set(window.innerWidth / 2, window.innerHeight * 0.5)
       }
       reposition()
       window.addEventListener('resize', reposition)
@@ -75,13 +79,12 @@ export function useLive2DRenderer() {
 
   function setMousePos(x: number, y: number) {
     if (!model || !_isReady) return
-    const dx = (x - window.innerWidth / 2) / (window.innerWidth / 2)
-    const dy = (y - window.innerHeight * 0.45) / (window.innerHeight / 2)
-    const m = model as any
-    m.setParameterValueById('ParamMouseX', dx * 30)
-    m.setParameterValueById('ParamAngleX', dx * 15)
-    m.setParameterValueById('ParamMouseY', dy * 30)
-    m.setParameterValueById('ParamAngleY', dy * 15)
+    try {
+      // Built-in focus API — handles head/eye tracking with smooth interpolation
+      model.focus(x, y)
+    } catch {
+      // focus may not be available before model is fully ready
+    }
   }
 
   function destroy() {
