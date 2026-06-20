@@ -7,11 +7,14 @@ import { usePetRenderer, type PetAction } from '../composables/usePetRenderer'
 import { useDebouncedSave } from '../composables/useDebouncedSave'
 import { useInteractionCounter } from '../composables/useInteractionCounter'
 import { useLive2DRenderer, type Live2DMotion } from '../composables/useLive2DRenderer'
+import { usePetStats } from '../composables/usePetStats'
 import { getRandomBarrage } from '../barrage/barrage'
 import { useCustomBarrages } from '../composables/useCustomBarrages'
 import { setupTray, setPassThroughChecked } from '../composables/useTray'
 import DonateOverlay from './DonateOverlay.vue'
 import BarrageInput from './BarrageInput.vue'
+import StatsPanel from './StatsPanel.vue'
+import DialogueBubble from './DialogueBubble.vue'
 
 const overlay = usePetRenderer()
 const overlayCanvasRef = overlay.canvasRef
@@ -36,6 +39,12 @@ let ptrDragging = false
 const customBarrages = useCustomBarrages()
 const showDonate = ref(false)
 const showBarrageInput = ref(false)
+const showStats = ref(false)
+
+const petStats = usePetStats()
+const dialogueText = ref('')
+let dialogueTimer: ReturnType<typeof setInterval> | null = null
+let decayTimer: ReturnType<typeof setInterval> | null = null
 
 // --- click-through / move mode toggle ---
 const moveMode = ref(false)
@@ -71,6 +80,9 @@ function onPointerUp() {
   if (ptrActive && !ptrDragging) {
     if (isReady.value) {
       notifyInteraction()
+      petStats.applyAction('pet')
+      const d = petStats.getDialogue()
+      if (d) dialogueText.value = d
       invoke('record_click').catch(() => {})
       incrementClicks().catch(() => {})
     }
@@ -98,6 +110,33 @@ function onKeyDown(e: KeyboardEvent) {
   if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'm') {
     e.preventDefault()
     toggleMoveMode()
+    return
+  }
+
+  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') {
+    e.preventDefault()
+    showStats.value = !showStats.value
+    return
+  }
+
+  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'f') {
+    e.preventDefault()
+    petStats.applyAction('feed')
+    return
+  }
+  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'w') {
+    e.preventDefault()
+    petStats.applyAction('work')
+    return
+  }
+  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'z') {
+    e.preventDefault()
+    petStats.applyAction('study')
+    return
+  }
+  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 't') {
+    e.preventDefault()
+    petStats.applyAction('sleep_start')
     return
   }
 
@@ -141,6 +180,24 @@ const ACTION_TO_MOTION: Record<string, Live2DMotion> = {
 
 onMounted(async () => {
   start()
+
+  // Init pet stats
+  await petStats.loadStats()
+  petStats.startAutoSave()
+
+  // Decay every 30s
+  decayTimer = setInterval(() => {
+    petStats.decayTick()
+    const d = petStats.getDialogue()
+    if (d) dialogueText.value = d
+  }, 30_000)
+
+  // Periodic dialogue even without decay triggers
+  dialogueTimer = setInterval(() => {
+    if (!dialogueText.value && Math.random() < 0.3) {
+      dialogueText.value = petStats.getDialogue()
+    }
+  }, 60_000)
 
   // Init Live2D
   if (live2dCanvasRef.value) {
@@ -210,6 +267,9 @@ onUnmounted(() => {
   unlistenBossKey?.()
   unlistenPetCommand?.()
   if (posInterval) clearInterval(posInterval)
+  if (decayTimer) clearInterval(decayTimer)
+  if (dialogueTimer) clearInterval(dialogueTimer)
+  petStats.destroy()
   live2d.destroy()
 })
 </script>
@@ -230,6 +290,8 @@ onUnmounted(() => {
     />
     <DonateOverlay v-if="showDonate" @close="showDonate = false" />
     <BarrageInput v-if="showBarrageInput" @submit="onBarrageSubmit" @close="showBarrageInput = false" />
+    <StatsPanel v-if="showStats" :stats="petStats.stats.value" :sleeping="petStats.sleeping.value" @close="showStats = false" />
+    <DialogueBubble :text="dialogueText" />
     <div v-if="live2dError" class="live2d-error">{{ live2dError }}</div>
   </div>
 </template>
