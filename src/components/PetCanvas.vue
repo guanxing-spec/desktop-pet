@@ -17,6 +17,7 @@ import StatsPanel from './StatsPanel.vue'
 import DialogueBubble from './DialogueBubble.vue'
 import ShopPanel from './ShopPanel.vue'
 import WorkTimer from './WorkTimer.vue'
+import SettingsPanel from './SettingsPanel.vue'
 
 const overlay = usePetRenderer()
 const overlayCanvasRef = overlay.canvasRef
@@ -50,6 +51,7 @@ let decayTimer: ReturnType<typeof setInterval> | null = null
 
 // Shop & work state
 const showShop = ref(false)
+const showSettings = ref(false)
 const working = ref(false)
 const studying = ref(false)
 const WORK_DURATION = 10_000
@@ -125,6 +127,13 @@ function onKeyDown(e: KeyboardEvent) {
   if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 's') {
     e.preventDefault()
     showStats.value = !showStats.value
+    return
+  }
+
+  // Settings panel
+  if (e.ctrlKey && e.shiftKey && e.key === ',') {
+    e.preventDefault()
+    showSettings.value = true
     return
   }
 
@@ -328,6 +337,7 @@ onUnmounted(() => {
     <BarrageInput v-if="showBarrageInput" @submit="onBarrageSubmit" @close="showBarrageInput = false" />
     <StatsPanel v-if="showStats" :stats="petStats.stats.value" :sleeping="petStats.sleeping.value" @close="showStats = false" />
     <ShopPanel v-if="showShop" :money="petStats.stats.value.money" @buy="onBuyItem" @close="showShop = false" />
+    <SettingsPanel v-if="showSettings" @close="showSettings = false" />
     <WorkTimer :active="working" label="💼 打工中…" :duration-ms="WORK_DURATION" @complete="onWorkComplete" />
     <WorkTimer :active="studying" label="📖 学习中…" :duration-ms="STUDY_DURATION" @complete="onStudyComplete" />
     <DialogueBubble :text="dialogueText" />
