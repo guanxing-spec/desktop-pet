@@ -3,6 +3,7 @@ import { ref, onMounted, onUnmounted } from 'vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
+import { load } from '@tauri-apps/plugin-store'
 import { usePetRenderer, type PetAction } from '../composables/usePetRenderer'
 import { useDebouncedSave } from '../composables/useDebouncedSave'
 import { useInteractionCounter } from '../composables/useInteractionCounter'
@@ -209,6 +210,11 @@ const ACTION_TO_MOTION: Record<string, Live2DMotion> = {
 onMounted(async () => {
   start()
 
+  // Request notification permission
+  if ('Notification' in window && Notification.permission === 'default') {
+    Notification.requestPermission().catch(() => {})
+  }
+
   // Init pet stats
   await petStats.loadStats()
   petStats.startAutoSave()
@@ -216,9 +222,36 @@ onMounted(async () => {
   // Decay every 30s
   decayTimer = setInterval(() => {
     petStats.decayTick()
+    const s = petStats.stats.value
+    // Low-stat notifications
+    if (s.hunger < 15 && Notification.permission === 'granted') {
+      new Notification('桌面显眼包', { body: '我好饿啊～想吃东西……' })
+    } else if (s.thirst < 15 && Notification.permission === 'granted') {
+      new Notification('桌面显眼包', { body: '渴死啦～要喝水……' })
+    } else if (s.mood < 15 && Notification.permission === 'granted') {
+      new Notification('桌面显眼包', { body: '好无聊……陪我玩嘛……' })
+    }
     const d = petStats.getDialogue()
     if (d) dialogueText.value = d
   }, 30_000)
+
+  // Daily gift
+  ;(async () => {
+    try {
+      const giftStore = await load('daily.json', { defaults: { daily: {} } })
+      const lastDate = await giftStore.get<string>('lastLogin')
+      const today = new Date().toDateString()
+      if (lastDate !== today) {
+        const s = petStats.stats.value
+        s.money += 50
+        s.mood = Math.min(100, s.mood + 20)
+        s.affinity = Math.min(100, s.affinity + 5)
+        dialogueText.value = '🎁 每日礼包！获得 ¥50！'
+        await giftStore.set('lastLogin', today)
+        await giftStore.save()
+      }
+    } catch { /* ignore */ }
+  })()
 
   // Periodic dialogue even without decay triggers
   dialogueTimer = setInterval(() => {
@@ -291,9 +324,13 @@ onMounted(async () => {
 })
 
 // --- shop buy ---
-function onBuyItem(item: { price: number; hunger?: number; thirst?: number; mood?: number }) {
-  if (petStats.buyItem(item.price, item.hunger ?? 0, item.thirst ?? 0, item.mood ?? 0)) {
-    dialogueText.value = `好吃！😋`
+function onBuyItem(item: { price: number; hunger?: number; thirst?: number; mood?: number; affinity?: number }) {
+  if (petStats.buyItem(item.price, item.hunger ?? 0, item.thirst ?? 0, item.mood ?? 0, item.affinity ?? 0)) {
+    if (item.affinity) {
+      dialogueText.value = `好开心！🥰`
+    } else {
+      dialogueText.value = `好吃！😋`
+    }
   }
 }
 
