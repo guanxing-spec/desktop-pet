@@ -26,7 +26,6 @@ export async function setupTray(opts: {
         await win.hide()
       } else {
         await win.show()
-        await win.setFocus()
       }
     },
   })
@@ -60,7 +59,6 @@ export async function setupTray(opts: {
               Math.round(BASE_H * s / 100),
             ),
           )
-          await getCurrentWindow().center()
         },
       }),
     )

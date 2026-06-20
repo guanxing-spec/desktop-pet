@@ -5,6 +5,7 @@ export interface ShopItem {
   hunger?: number
   thirst?: number
   mood?: number
+  health?: number
   affinity?: number
   desc?: string
   emoji: string
@@ -23,6 +24,13 @@ export const GIFTS: ShopItem[] = [
   { id: 'teddy', name: '小熊玩偶', price: 40, mood: 15, affinity: 15, emoji: '🧸', desc: '好感度 +15' },
   { id: 'ring', name: '闪闪发光的戒指', price: 100, mood: 25, affinity: 30, emoji: '💍', desc: '好感度 +30' },
   { id: 'perfume', name: '香水', price: 60, mood: 15, affinity: 20, emoji: '✨', desc: '好感度 +20' },
+]
+
+export const MEDICINES: ShopItem[] = [
+  { id: 'bandage', name: '创可贴', price: 10, health: 15, emoji: '🩹', desc: '健康 +15' },
+  { id: 'medicine', name: '感冒药', price: 25, health: 35, emoji: '💊', desc: '健康 +35' },
+  { id: 'syrup', name: '止咳糖浆', price: 40, health: 50, mood: 5, emoji: '🧪', desc: '健康 +50' },
+  { id: 'vitamin', name: '维生素片', price: 30, health: 20, mood: 10, emoji: '💊', desc: '健康 +20' },
 ]
 
 export const DRINKS: ShopItem[] = [

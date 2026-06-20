@@ -5,10 +5,13 @@ const props = defineProps<{
   active: boolean
   label: string
   durationMs: number
+  slacking?: boolean
 }>()
 
 const emit = defineEmits<{
   complete: []
+  slack: []
+  refocus: []
 }>()
 
 const progress = ref(0)
@@ -21,17 +24,36 @@ function startTimer() {
   tick()
 }
 
+let slackAccumulated = 0
+let lastActiveTime = 0
+
 function tick() {
   if (!props.active) return
-  const elapsed = performance.now() - startTime
-  progress.value = Math.min(1, elapsed / props.durationMs)
+  if (props.slacking) {
+    // Pause — save elapsed so far
+    if (lastActiveTime === 0) lastActiveTime = performance.now()
+    raf = requestAnimationFrame(tick)
+    return
+  }
+  if (lastActiveTime > 0) {
+    slackAccumulated += performance.now() - lastActiveTime
+    lastActiveTime = 0
+  }
+  const totalElapsed = performance.now() - startTime - slackAccumulated
+  progress.value = Math.min(1, totalElapsed / props.durationMs)
   if (progress.value >= 1) {
     emit('complete')
     progress.value = 0
+    slackAccumulated = 0
+    lastActiveTime = 0
     return
   }
   raf = requestAnimationFrame(tick)
 }
+
+watch(() => props.slacking, (v) => {
+  if (v) emit('slack')
+})
 
 watch(() => props.active, (v) => {
   if (v) startTimer()
@@ -42,10 +64,19 @@ onUnmounted(() => cancelAnimationFrame(raf))
 </script>
 
 <template>
-  <div v-if="active" class="work-timer">
-    <span class="work-label">{{ label }}</span>
+  <div
+    v-if="active"
+    class="work-timer"
+    :class="{ slacking: slacking }"
+    @click="slacking ? $emit('refocus') : undefined"
+  >
+    <span class="work-label">{{ slacking ? '💤 摸鱼中…点击继续' : label }}</span>
     <div class="work-track">
-      <div class="work-fill" :style="{ width: (progress * 100) + '%' }" />
+      <div
+        class="work-fill"
+        :class="{ paused: slacking }"
+        :style="{ width: (progress * 100) + '%' }"
+      />
     </div>
     <span class="work-pct">{{ Math.floor(progress * 100) }}%</span>
   </div>
@@ -85,6 +116,18 @@ onUnmounted(() => cancelAnimationFrame(raf))
   background: linear-gradient(90deg, #6366f1, #8b5cf6);
   border-radius: 4px;
   transition: width 0.05s linear;
+}
+.work-fill.paused {
+  background: linear-gradient(90deg, #f59e0b, #ef4444);
+  animation: pulse 0.8s ease-in-out infinite;
+}
+.work-timer.slacking {
+  cursor: pointer;
+  border: 1px solid rgba(245, 158, 11, 0.4);
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.6; }
 }
 .work-pct {
   color: #a5b4fc;

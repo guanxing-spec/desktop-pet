@@ -19,7 +19,8 @@
         "transparent": true,
         "alwaysOnTop": true,
         "resizable": false,
-        "center": true,
+        "skipTaskbar": true,
+        "shadow": false,
         "backgroundColor": "#00000000"
       }
     ],

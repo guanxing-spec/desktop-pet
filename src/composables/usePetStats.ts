@@ -33,11 +33,16 @@ function expToNext(level: number): number {
 export type StatAction =
   | 'feed' | 'drink'
   | 'work' | 'study' | 'sleep_start' | 'sleep_end'
-  | 'pet' | 'idle_tick'
+  | 'pet' | 'pet_head' | 'pet_body' | 'pinch_face'
+  | 'idle_tick'
+  | 'medicine'
 
 export function usePetStats() {
   const stats = ref<PetStatsData>({ ...DEFAULT })
   const sleeping = ref(false)
+  const breakthroughCount = ref(0)
+  const slacking = ref(false)
+  const sick = computed(() => stats.value.health < 20)
   let saveTimer: ReturnType<typeof setInterval> | null = null
 
   // --- computed helpers ---
@@ -59,11 +64,16 @@ export function usePetStats() {
     s.mood = Math.max(0, s.mood - 0.5)
     s.stamina = Math.min(100, s.stamina + 0.5)
 
-    // Health penalty if starving
-    if (s.hunger < 15 || s.thirst < 15) {
+    // Health penalty if starving or sick
+    if (s.hunger < 15 || s.thirst < 15 || s.health < 20) {
       s.health = Math.max(0, s.health - 1)
     } else {
       s.health = Math.min(100, s.health + 0.2)
+    }
+
+    // Sick penalty: extra stamina drain
+    if (s.health < 20) {
+      s.stamina = Math.max(0, s.stamina - 0.5)
     }
 
     // Clamp all
@@ -92,6 +102,7 @@ export function usePetStats() {
         s.mood = Math.min(100, s.mood + 3)
         break
       case 'work':
+        if (sick.value) return false
         if (s.stamina >= 15) {
           s.stamina -= 15
           s.mood = Math.max(0, s.mood - 5)
@@ -100,6 +111,7 @@ export function usePetStats() {
         }
         return false
       case 'study':
+        if (sick.value) return false
         if (s.stamina >= 15) {
           s.stamina -= 15
           s.mood = Math.max(0, s.mood - 3)
@@ -118,19 +130,55 @@ export function usePetStats() {
         s.mood = Math.min(100, s.mood + 10)
         s.affinity = Math.min(100, s.affinity + 2)
         break
+      case 'pet_head':
+        s.mood = Math.min(100, s.mood + 15)
+        s.affinity = Math.min(100, s.affinity + 3)
+        break
+      case 'pet_body':
+        s.mood = Math.min(100, s.mood + 8)
+        s.affinity = Math.min(100, s.affinity + 1)
+        break
+      case 'pinch_face':
+        s.mood = Math.min(100, s.mood + 5)
+        s.affinity = Math.min(100, s.affinity + 1)
+        break
+      case 'medicine':
+        s.health = Math.min(100, s.health + 25)
+        break
     }
     return true
   }
 
-  function checkLevelUp() {
+  function checkLevelUp(): boolean {
     const s = stats.value
-    while (s.exp >= expNeeded.value && s.level < 99) {
+    let leveled = false
+    while (s.exp >= expNeeded.value && s.level < 1000) {
       s.exp -= expNeeded.value
       s.level++
       s.stamina = Math.min(100, s.stamina + 20)
       s.mood = Math.min(100, s.mood + 10)
+      leveled = true
     }
+    return leveled
   }
+
+  /** Breakthrough: reset on reaching level 1000 */
+  function applyBreakthrough(): boolean {
+    if (stats.value.level < 1000) return false
+    breakthroughCount.value++
+    stats.value.level = 100 * breakthroughCount.value
+    stats.value.exp = 0
+    stats.value.stamina = 100
+    stats.value.mood = 100
+    stats.value.health = 100
+    clampStats(stats.value)
+    return true
+  }
+
+  function getMaxLevel() { return 1000 }
+  function getMaxHealth() { return 100 + breakthroughCount.value * 10 }
+  function getMaxMood() { return 100 + breakthroughCount.value * 5 }
+  function getMaxStamina() { return 100 + breakthroughCount.value * 5 }
 
   // --- shop ---
   function buyItem(price: number, hungerGain = 0, thirstGain = 0, moodGain = 0, affinityGain = 0): boolean {
@@ -178,12 +226,15 @@ export function usePetStats() {
   // --- get dialogue based on current state ---
   function getDialogue(): string {
     const s = stats.value
+    if (slacking.value) return '唔…偷一小会儿懒……'
+    if (sick.value) return '咳咳…好难受…需要吃药……'
     if (s.health < 20) return '唔…好难受……'
     if (s.hunger < 15) return '好饿啊……想吃东西……'
     if (s.thirst < 15) return '口渴死了……要喝水……'
     if (s.stamina < 15) return '好累……让我睡一会儿……'
     if (s.mood < 20) return '好无聊……陪我玩嘛……'
     if (s.affinity > 80 && s.mood > 70) return '最喜欢你啦！✨'
+    if (breakthroughCount.value > 0 && Math.random() < 0.15) return `第${breakthroughCount.value}次突破！我已经无敌了！✨`
     if (s.level > 1 && Math.random() < 0.1) return `我已经${s.level}级啦！`
     if (Math.random() < 0.15) return idleLines[Math.floor(Math.random() * idleLines.length)]
     return ''
@@ -196,11 +247,20 @@ export function usePetStats() {
   return {
     stats,
     sleeping,
+    slacking,
+    breakthroughCount,
+    sick,
     expNeeded,
     expProgress,
     decayTick,
     applyAction,
     buyItem,
+    checkLevelUp,
+    applyBreakthrough,
+    getMaxLevel,
+    getMaxHealth,
+    getMaxMood,
+    getMaxStamina,
     loadStats,
     saveStats,
     startAutoSave,

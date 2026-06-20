@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { FOODS, DRINKS, GIFTS, type ShopItem } from '../data/shop'
+import { FOODS, DRINKS, MEDICINES, GIFTS, type ShopItem } from '../data/shop'
 
 const props = defineProps<{
   money: number
@@ -53,6 +53,24 @@ function canBuy(item: ShopItem): boolean {
           >
             <span class="item-emoji">{{ item.emoji }}</span>
             <span class="item-name">{{ item.name }}</span>
+            <span class="item-price">¥{{ item.price }}</span>
+          </button>
+        </div>
+      </div>
+      <div class="shop-section">
+        <div class="section-label">💊 药品</div>
+        <div class="shop-list">
+          <button
+            v-for="item in MEDICINES"
+            :key="item.id"
+            class="shop-item"
+            :class="{ disabled: !canBuy(item) }"
+            :disabled="!canBuy(item)"
+            @click="emit('buy', item)"
+          >
+            <span class="item-emoji">{{ item.emoji }}</span>
+            <span class="item-name">{{ item.name }}</span>
+            <span class="item-desc">{{ item.desc }}</span>
             <span class="item-price">¥{{ item.price }}</span>
           </button>
         </div>
