@@ -15,6 +15,8 @@ import DonateOverlay from './DonateOverlay.vue'
 import BarrageInput from './BarrageInput.vue'
 import StatsPanel from './StatsPanel.vue'
 import DialogueBubble from './DialogueBubble.vue'
+import ShopPanel from './ShopPanel.vue'
+import WorkTimer from './WorkTimer.vue'
 
 const overlay = usePetRenderer()
 const overlayCanvasRef = overlay.canvasRef
@@ -45,6 +47,13 @@ const petStats = usePetStats()
 const dialogueText = ref('')
 let dialogueTimer: ReturnType<typeof setInterval> | null = null
 let decayTimer: ReturnType<typeof setInterval> | null = null
+
+// Shop & work state
+const showShop = ref(false)
+const working = ref(false)
+const studying = ref(false)
+const WORK_DURATION = 10_000
+const STUDY_DURATION = 8_000
 
 // --- click-through / move mode toggle ---
 const moveMode = ref(false)
@@ -121,22 +130,32 @@ function onKeyDown(e: KeyboardEvent) {
 
   if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'f') {
     e.preventDefault()
-    petStats.applyAction('feed')
+    showShop.value = true
     return
   }
   if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'w') {
     e.preventDefault()
-    petStats.applyAction('work')
+    if (working.value || studying.value) return
+    if (petStats.applyAction('work')) {
+      working.value = true
+    }
     return
   }
   if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'z') {
     e.preventDefault()
-    petStats.applyAction('study')
+    if (working.value || studying.value) return
+    if (petStats.applyAction('study')) {
+      studying.value = true
+    }
     return
   }
   if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 't') {
     e.preventDefault()
-    petStats.applyAction('sleep_start')
+    if (petStats.sleeping.value) {
+      petStats.applyAction('sleep_end')
+    } else {
+      petStats.applyAction('sleep_start')
+    }
     return
   }
 
@@ -262,6 +281,23 @@ onMounted(async () => {
   }, 2000)
 })
 
+// --- shop buy ---
+function onBuyItem(item: { price: number; hunger?: number; thirst?: number; mood?: number }) {
+  if (petStats.buyItem(item.price, item.hunger ?? 0, item.thirst ?? 0, item.mood ?? 0)) {
+    dialogueText.value = `好吃！😋`
+  }
+}
+
+// --- work/study complete ---
+function onWorkComplete() {
+  working.value = false
+  dialogueText.value = `赚了 ¥${5 + Math.floor(petStats.stats.value.level * 0.5)}！`
+}
+function onStudyComplete() {
+  studying.value = false
+  dialogueText.value = '学习真充实！📚'
+}
+
 onUnmounted(() => {
   document.removeEventListener('keydown', onKeyDown)
   unlistenBossKey?.()
@@ -291,6 +327,9 @@ onUnmounted(() => {
     <DonateOverlay v-if="showDonate" @close="showDonate = false" />
     <BarrageInput v-if="showBarrageInput" @submit="onBarrageSubmit" @close="showBarrageInput = false" />
     <StatsPanel v-if="showStats" :stats="petStats.stats.value" :sleeping="petStats.sleeping.value" @close="showStats = false" />
+    <ShopPanel v-if="showShop" :money="petStats.stats.value.money" @buy="onBuyItem" @close="showShop = false" />
+    <WorkTimer :active="working" label="💼 打工中…" :duration-ms="WORK_DURATION" @complete="onWorkComplete" />
+    <WorkTimer :active="studying" label="📖 学习中…" :duration-ms="STUDY_DURATION" @complete="onStudyComplete" />
     <DialogueBubble :text="dialogueText" />
     <div v-if="live2dError" class="live2d-error">{{ live2dError }}</div>
   </div>

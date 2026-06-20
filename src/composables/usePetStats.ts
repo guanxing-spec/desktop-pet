@@ -132,6 +132,17 @@ export function usePetStats() {
     }
   }
 
+  // --- shop ---
+  function buyItem(price: number, hungerGain = 0, thirstGain = 0, moodGain = 0): boolean {
+    const s = stats.value
+    if (s.money < price) return false
+    s.money -= price
+    s.hunger = Math.min(100, s.hunger + hungerGain)
+    s.thirst = Math.min(100, s.thirst + thirstGain)
+    s.mood = Math.min(100, s.mood + moodGain)
+    return true
+  }
+
   // --- save / load ---
   let _store: Store | null = null
 
@@ -188,6 +199,7 @@ export function usePetStats() {
     expProgress,
     decayTick,
     applyAction,
+    buyItem,
     loadStats,
     saveStats,
     startAutoSave,
