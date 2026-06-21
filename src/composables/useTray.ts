@@ -1,10 +1,7 @@
 import { TrayIcon } from '@tauri-apps/api/tray'
-import { Menu, MenuItem, CheckMenuItem, Submenu, PredefinedMenuItem } from '@tauri-apps/api/menu'
-import { getCurrentWindow, PhysicalSize } from '@tauri-apps/api/window'
+import { Menu, MenuItem, CheckMenuItem, PredefinedMenuItem } from '@tauri-apps/api/menu'
+import { getCurrentWindow } from '@tauri-apps/api/window'
 import { invoke } from '@tauri-apps/api/core'
-
-const BASE_W = 300
-const BASE_H = 340
 
 let passThroughCheck: CheckMenuItem | null = null
 
@@ -47,32 +44,13 @@ export async function setupTray(opts: {
     },
   })
 
-  const scaleSubmenu = await Submenu.new({ text: '缩放' })
-  for (const s of [50, 75, 100, 125, 150]) {
-    await scaleSubmenu.append(
-      await MenuItem.new({
-        text: `${s}%`,
-        action: async () => {
-          await getCurrentWindow().setSize(
-            new PhysicalSize(
-              Math.round(BASE_W * s / 100),
-              Math.round(BASE_H * s / 100),
-            ),
-          )
-        },
-      }),
-    )
-  }
-
-  const sep2 = await PredefinedMenuItem.new({ item: 'Separator' })
-
   const quit = await MenuItem.new({
     text: '退出',
     action: () => invoke('exit_app').catch(() => {}),
   })
 
   const menu = await Menu.new({
-    items: [showHide, moveMode, sep1, passThroughCheck, scaleSubmenu, sep2, quit],
+    items: [showHide, moveMode, sep1, passThroughCheck, quit],
   })
 
   await tray.setMenu(menu)

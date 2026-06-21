@@ -24,7 +24,6 @@ import { useInventory, type InventoryItem } from '../composables/useInventory'
 
 const overlay = usePetRenderer()
 const overlayCanvasRef = overlay.canvasRef
-void overlayCanvasRef
 const { start, stop, triggerDance, triggerAction, setMoveMode, notifyInteraction, setVisible, setMousePos, setActionCallback, setMouseCallback, setShowFps } = overlay
 
 const { incrementClicks, incrementKeypresses } = useInteractionCounter()

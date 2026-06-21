@@ -10,6 +10,7 @@ export function useLive2DRenderer() {
   let _isReady = false
   let _currentFactor = 0.5
   const initError = ref<string | null>(null)
+  let _repositionHandler: (() => void) | null = null
 
   // Bobbing animation for movement
   let _bobActive = false
@@ -42,12 +43,12 @@ export function useLive2DRenderer() {
       applyScale()
 
       // Auto-center on resize — offset Y to show full body
-      const reposition = () => {
+      _repositionHandler = () => {
         if (!model) return
         model.position.set(window.innerWidth / 2, window.innerHeight * 0.55)
       }
-      reposition()
-      window.addEventListener('resize', reposition)
+      _repositionHandler()
+      window.addEventListener('resize', _repositionHandler)
 
       // Start idle
       _playMotion('Idle')
@@ -132,7 +133,7 @@ export function useLive2DRenderer() {
   }
 
   function destroy() {
-    window.removeEventListener('resize', () => {})
+    if (_repositionHandler) window.removeEventListener('resize', _repositionHandler)
     if (app) {
       app.destroy(true, { children: true })
       app = null
