@@ -1,4 +1,4 @@
-#![deny(unsafe_code)]
+#![cfg_attr(not(target_os = "windows"), deny(unsafe_code))]
 
 pub mod boss_key;
 pub mod click_sensor;
@@ -116,6 +116,43 @@ pub fn run() {
                 .tooltip("桌面显眼包")
                 .show_menu_on_left_click(true)
                 .build(app)?;
+
+            // Windows-specific: remove all window-like visual artifacts
+            #[cfg(target_os = "windows")]
+            {
+                use windows::Win32::Graphics::Dwm::{
+                    DwmSetWindowAttribute, DWMWA_WINDOW_CORNER_PREFERENCE, DWMWCP_DONOTROUND,
+                };
+                use windows::Win32::UI::WindowsAndMessaging::{
+                    GetWindowLongW, SetWindowLongW, GWL_STYLE,
+                    WS_SIZEBOX, WS_THICKFRAME,
+                };
+
+                if let Some(window) = app.get_webview_window("main") {
+                    if let Ok(hwnd) = window.hwnd() {
+                        unsafe {
+                            // 1. Disable rounded corners（Win11 默认圆角）
+                            let _ = DwmSetWindowAttribute(
+                                hwnd,
+                                DWMWA_WINDOW_CORNER_PREFERENCE,
+                                &DWMWCP_DONOTROUND as *const _ as *const std::ffi::c_void,
+                                std::mem::size_of::<u32>() as u32,
+                            );
+
+                            // 2. Remove invisible resize border
+                            let style = GetWindowLongW(hwnd, GWL_STYLE);
+                            SetWindowLongW(
+                                hwnd,
+                                GWL_STYLE,
+                                style & !(WS_SIZEBOX.0 as i32 | WS_THICKFRAME.0 as i32),
+                            );
+                        }
+                    }
+
+                    // 3. Remove DWM drop shadow
+                    let _ = window.set_shadow(false);
+                }
+            }
             Ok(())
         })
         .run(tauri::generate_context!())

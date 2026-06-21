@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { getCurrentWindow } from '@tauri-apps/api/window'
 import { invoke } from '@tauri-apps/api/core'
 import { listen } from '@tauri-apps/api/event'
@@ -11,11 +11,8 @@ import { useLive2DRenderer, type Live2DMotion } from '../composables/useLive2DRe
 import { usePetStats, type StatAction } from '../composables/usePetStats'
 import { useAchievements } from '../composables/useAchievements'
 import { usePetAutoBehavior } from '../composables/usePetAutoBehavior'
-import { getRandomBarrage } from '../barrage/barrage'
-import { useCustomBarrages } from '../composables/useCustomBarrages'
 import { setupTray, setPassThroughChecked } from '../composables/useTray'
 import DonateOverlay from './DonateOverlay.vue'
-import BarrageInput from './BarrageInput.vue'
 import StatsPanel from './StatsPanel.vue'
 import DialogueBubble from './DialogueBubble.vue'
 import ShopPanel from './ShopPanel.vue'
@@ -28,7 +25,7 @@ import { useInventory, type InventoryItem } from '../composables/useInventory'
 const overlay = usePetRenderer()
 const overlayCanvasRef = overlay.canvasRef
 void overlayCanvasRef
-const { start, stop, triggerDance, triggerAction, addBarrage, setMoveMode, notifyInteraction, setVisible, setMousePos, setActionCallback, setMouseCallback } = overlay
+const { start, stop, triggerDance, triggerAction, setMoveMode, notifyInteraction, setVisible, setMousePos, setActionCallback, setMouseCallback, setShowFps } = overlay
 
 const { incrementClicks, incrementKeypresses } = useInteractionCounter()
 
@@ -45,9 +42,7 @@ let ptrStart = { x: 0, y: 0 }
 let ptrActive = false
 let ptrDragging = false
 
-const customBarrages = useCustomBarrages()
 const showDonate = ref(false)
-const showBarrageInput = ref(false)
 const showStats = ref(false)
 
 const petStats = usePetStats()
@@ -73,6 +68,11 @@ const inventory = useInventory()
 
 // Achievements
 const achievements = useAchievements()
+
+// Settings state loaded by PetCanvas (shared with SettingsPanel)
+const showFpsSetting = ref(false)
+const scaleFactorSetting = ref(0.5)
+const autoBehaviorEnabled = ref(true)
 
 // Auto behavior (walk/climb/fly)
 const autoBehavior = usePetAutoBehavior()
@@ -123,7 +123,12 @@ function toggleMoveMode() {
 // --- right-click context menu ---
 function onContextMenu(e: MouseEvent) {
   e.preventDefault()
-  ctxMenuPos.value = { x: e.clientX, y: e.clientY }
+  // Pre-compute safe position to avoid clipping by window border
+  const menuW = 180
+  const menuH = 300
+  let x = Math.max(8, Math.min(e.clientX, window.innerWidth - menuW - 8))
+  let y = Math.max(8, Math.min(e.clientY, window.innerHeight - menuH - 8))
+  ctxMenuPos.value = { x, y }
 }
 
 function closeContextMenu() {
@@ -166,6 +171,19 @@ function onPointerMove(e: PointerEvent) {
 
 function onPointerUp(e?: PointerEvent) {
   if (ptrActive && !ptrDragging && isReady.value) {
+    // Skip clicks in empty space around the pet
+    if (e) {
+      const rect = overlayCanvasRef.value?.getBoundingClientRect()
+      if (rect) {
+        const relX = (e.clientX - rect.left) / rect.width
+        const relY = (e.clientY - rect.top) / rect.height
+        if (relX < 0.08 || relX > 0.92 || relY < 0.1) {
+          ptrActive = false
+          ptrDragging = false
+          return
+        }
+      }
+    }
     notifyInteraction()
     // Determine click zone for detailed interaction
     const zone = e ? getClickZone(e.clientX, e.clientY) : 'body'
@@ -193,20 +211,11 @@ function onPointerUp(e?: PointerEvent) {
   ptrDragging = false
 }
 
-// --- keyboard events + barrage scheduler ---
-let lastBarrageTime = -5
-
+// --- keyboard events ---
 function onKeyDown(e: KeyboardEvent) {
   if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'd') {
     e.preventDefault()
     showDonate.value = !showDonate.value
-    showBarrageInput.value = false
-    return
-  }
-  if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'b') {
-    e.preventDefault()
-    showBarrageInput.value = !showBarrageInput.value
-    showDonate.value = false
     return
   }
   if (e.ctrlKey && e.shiftKey && e.key.toLowerCase() === 'm') {
@@ -269,25 +278,13 @@ function onKeyDown(e: KeyboardEvent) {
     return
   }
 
-  if (showDonate.value || showBarrageInput.value) return
+  if (showDonate.value) return
 
   notifyInteraction()
   triggerDance()
 
   invoke('send_key_event', { key: 'keydown' }).catch(() => {})
   incrementKeypresses().catch(() => {})
-
-  const now = performance.now() / 1000
-  if (now - lastBarrageTime >= 5 && Math.random() < 0.5) {
-    addBarrage(getRandomBarrage(customBarrages.getAll()).text)
-    lastBarrageTime = now
-  }
-}
-
-function onBarrageSubmit(text: string) {
-  customBarrages.add(text).catch(() => {})
-  addBarrage(text)
-  showBarrageInput.value = false
 }
 
 // --- boss key ---
@@ -301,11 +298,11 @@ const LIVE2D_MODEL_URL = '/assets/live2d/Hiyori/Hiyori.model3.json'
 
 // Map PetAction → Live2D motion group
 const ACTION_TO_MOTION: Record<string, Live2DMotion> = {
-  JumpLight: 'TapBody' as Live2DMotion,
-  ComboBreak: 'TapBody' as Live2DMotion,
-  CrazyDance: 'TapBody' as Live2DMotion,
+  JumpLight: 'Action',
+  ComboBreak: 'Emote',
+  CrazyDance: 'Emote',
   Yawn: 'Idle',
-  Talk: 'TapBody' as Live2DMotion,
+  Talk: 'TapBody',
 }
 
 // --- context menu items ---
@@ -392,10 +389,28 @@ const contextMenuItems = computed((): any[] => [
     shortcut: '⇧⌃M',
     action: () => { toggleMoveMode(); closeContextMenu() },
   },
+  {
+    label: '退出',
+    emoji: '🚪',
+    action: () => { invoke('exit_app'); closeContextMenu() },
+  },
 ])
 
 onMounted(async () => {
   start()
+
+  // Load settings
+  try {
+    const store = await load('settings.json', { defaults: { settings: {} } })
+    const raw = await store.get<Record<string, unknown>>('settings')
+    if (raw) {
+      if (typeof raw.showFps === 'boolean') showFpsSetting.value = raw.showFps
+      if (typeof raw.petScale === 'number') scaleFactorSetting.value = raw.petScale
+      if (typeof raw.autoBehavior === 'boolean') autoBehaviorEnabled.value = raw.autoBehavior
+    }
+  } catch { /* ignore */ }
+  setShowFps(showFpsSetting.value)
+  autoBehavior.enabled.value = autoBehaviorEnabled.value
 
   // Request notification permission
   if ('Notification' in window && Notification.permission === 'default') {
@@ -473,7 +488,6 @@ onMounted(async () => {
   }
 
   document.addEventListener('keydown', onKeyDown)
-  await customBarrages.load()
   await inventory.loadInventory()
   await achievements.loadAchievements()
 
@@ -600,6 +614,51 @@ function onStudyComplete() {
   checkPetAchievements()
 }
 
+// Persist FPS setting when toggled
+watch(showFpsSetting, async (val) => {
+  setShowFps(val)
+  try {
+    const store = await load('settings.json', { defaults: { settings: {} } })
+    const raw = (await store.get<Record<string, unknown>>('settings')) ?? {}
+    raw.showFps = val
+    await store.set('settings', raw)
+    await store.save()
+  } catch { /* ignore */ }
+})
+
+// Persist scale factor
+watch(scaleFactorSetting, async (val) => {
+  live2d.setScaleFactor(val)
+  try {
+    const store = await load('settings.json', { defaults: { settings: {} } })
+    const raw = (await store.get<Record<string, unknown>>('settings')) ?? {}
+    raw.petScale = val
+    delete raw.scaleFactor // clear old key
+    await store.set('settings', raw)
+    await store.save()
+  } catch { /* ignore */ }
+})
+
+// Persist auto-behavior toggle
+watch(autoBehaviorEnabled, async (val) => {
+  autoBehavior.enabled.value = val
+  try {
+    const store = await load('settings.json', { defaults: { settings: {} } })
+    const raw = (await store.get<Record<string, unknown>>('settings')) ?? {}
+    raw.autoBehavior = val
+    await store.set('settings', raw)
+    await store.save()
+  } catch { /* ignore */ }
+})
+
+// Play Live2D motion + bobbing when auto-behavior starts
+watch(() => autoBehavior.behavior.value, (b) => {
+  if (b === 'walking') { live2d.playMotion('Action'); live2d.startBob('walk') }
+  else if (b === 'climbing') { live2d.playMotion('Emote'); live2d.startBob('climb') }
+  else if (b === 'flying') { live2d.playMotion('Special'); live2d.startBob('fly') }
+  else { live2d.returnToIdle(); live2d.stopBob() }
+})
+
 onUnmounted(() => {
   document.removeEventListener('keydown', onKeyDown)
   unlistenBossKey?.()
@@ -630,10 +689,9 @@ onUnmounted(() => {
       @contextmenu="onContextMenu"
     />
     <DonateOverlay v-if="showDonate" @close="showDonate = false" />
-    <BarrageInput v-if="showBarrageInput" @submit="onBarrageSubmit" @close="showBarrageInput = false" />
     <StatsPanel v-if="showStats" :stats="petStats.stats.value" :sleeping="petStats.sleeping.value" @close="showStats = false" />
     <ShopPanel v-if="showShop" :money="petStats.stats.value.money" @buy="onBuyItem" @close="showShop = false" />
-    <SettingsPanel v-if="showSettings" @close="showSettings = false" />
+    <SettingsPanel v-if="showSettings" :showFps="showFpsSetting" :scaleFactor="scaleFactorSetting" :autoBehavior="autoBehaviorEnabled" @update:showFps="showFpsSetting = $event" @update:scaleFactor="scaleFactorSetting = $event" @update:autoBehavior="autoBehaviorEnabled = $event" @close="showSettings = false" />
     <InventoryPanel
       v-if="showInventory"
       :items="inventory.items.value"

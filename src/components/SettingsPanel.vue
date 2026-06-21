@@ -2,7 +2,18 @@
 import { ref, watch } from 'vue'
 import { load, type Store } from '@tauri-apps/plugin-store'
 
-const emit = defineEmits<{ close: [] }>()
+const props = defineProps<{
+  showFps?: boolean
+  scaleFactor?: number
+  autoBehavior?: boolean
+}>()
+
+const emit = defineEmits<{
+  close: []
+  'update:showFps': [value: boolean]
+  'update:scaleFactor': [value: number]
+  'update:autoBehavior': [value: boolean]
+}>()
 
 // Settings state
 const decayEnabled = ref(true)
@@ -62,6 +73,44 @@ loadSettings()
       <div class="settings-header">
         <span class="settings-title">⚙️ 设置</span>
         <button class="close-btn" @click="$emit('close')">✕</button>
+      </div>
+
+      <div class="setting-group">
+        <div class="setting-row">
+          <span class="setting-label">显示 FPS</span>
+          <label class="toggle">
+            <input type="checkbox" :checked="showFps" @change="$emit('update:showFps', ($event.target as HTMLInputElement).checked)" />
+            <span class="toggle-slider" />
+          </label>
+        </div>
+        <div class="setting-hint">在右上角显示实时渲染帧率</div>
+      </div>
+
+      <div class="setting-group">
+        <div class="setting-row">
+          <span class="setting-label">自动行为</span>
+          <label class="toggle">
+            <input type="checkbox" :checked="autoBehavior" @change="$emit('update:autoBehavior', ($event.target as HTMLInputElement).checked)" />
+            <span class="toggle-slider" />
+          </label>
+        </div>
+        <div class="setting-hint">桌宠随机行走、爬墙、飞行</div>
+      </div>
+
+      <div class="setting-group">
+        <div class="setting-row">
+          <span class="setting-label">宠物缩放</span>
+          <span class="setting-val">{{ scaleFactor?.toFixed(1) ?? '1.0' }}x</span>
+        </div>
+        <input
+          type="range"
+          min="0.5"
+          max="2.0"
+          step="0.1"
+          :value="scaleFactor ?? 1.0"
+          class="slider"
+          @input="$emit('update:scaleFactor', Number(($event.target as HTMLInputElement).value))"
+        />
       </div>
 
       <div class="setting-group">

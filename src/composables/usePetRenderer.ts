@@ -1,28 +1,11 @@
 import { ref, onUnmounted } from 'vue'
 
-export interface BarrageItem {
-  id: number
-  text: string
-  track: number
-  speed: number
-  birth: number
-}
-
 export type PetAction = 'JumpLight' | 'ComboBreak' | 'CrazyDance' | 'Yawn' | 'Talk'
 
 interface ActiveAction {
   action: PetAction
   startTime: number
   duration: number
-}
-
-// ── Action-contextual barrage texts ──
-const ACTION_BARRAGES: Record<PetAction, string[]> = {
-  JumpLight: ['诶？就这力度？', '哼！没吃饭吗？', '你手速好慢哦～', '轻飘飘~'],
-  ComboBreak: ['加油加油！论文必过！', '不错嘛，再来！', '连击！', '手速不错嘛'],
-  CrazyDance: ['看呆了吧！200年的舞步！', '录屏发宿舍群！', '嗨起来了！', '好嗨哟~'],
-  Yawn: ['困死啦……你帮我写作业～', '好困...', 'zzZ', '眼睛睁不开了…'],
-  Talk: ['说点什么好呢', '今天天气不错', '嗯…', '好无聊，写会作业？'],
 }
 
 export function usePetRenderer() {
@@ -32,11 +15,6 @@ export function usePetRenderer() {
 
   // FSM action state
   let currentAction: ActiveAction | null = null
-
-  // Barrage state
-  const barrages: BarrageItem[] = []
-  let nextBarrageId = 0
-  let nextTrack = 0
   let _moveMode = false
 
   const ACTION_DURATION: Record<PetAction, number> = {
@@ -48,8 +26,6 @@ export function usePetRenderer() {
   }
 
   // ── Idle system ──
-  const IDLE_YAWN_MS = 15000
-  const IDLE_SLEEP_MS = 30000
   let lastInteractionTime = performance.now()
   let isVisible = true
   let idlePhase: 'awake' | 'drowsy' | 'asleep' = 'awake'
@@ -57,6 +33,7 @@ export function usePetRenderer() {
   // ── FPS counter ──
   let _frameTimes: number[] = []
   let _fps = 60
+  let _showFps = false
 
   // ── Live2D bridge callback ──
   let _onAction: ((action: PetAction | null) => void) | null = null
@@ -81,10 +58,6 @@ export function usePetRenderer() {
   function triggerAction(action: PetAction) {
     notifyInteraction()
 
-    // Push contextual barrage
-    const texts = ACTION_BARRAGES[action]
-    addBarrage(texts[Math.floor(Math.random() * texts.length)])
-
     const now = performance.now()
     currentAction = {
       action,
@@ -93,18 +66,8 @@ export function usePetRenderer() {
     }
   }
 
-  function addBarrage(text: string) {
-    const elapsed = startTime ? (performance.now() - startTime) / 1000 : 0
-    barrages.push({
-      id: nextBarrageId++,
-      text,
-      track: nextTrack,
-      speed: 70 + Math.random() * 30,
-      birth: elapsed,
-    })
-    if (barrages.length > 10) barrages.splice(0, barrages.length - 10)
-    nextTrack = (nextTrack + 1) % 3
-  }
+  const IDLE_YAWN_MS = 15000
+  const IDLE_SLEEP_MS = 30000
 
   function notifyInteraction() {
     lastInteractionTime = performance.now()
@@ -122,14 +85,6 @@ export function usePetRenderer() {
     _onMouse?.(x, y)
   }
 
-  function idleBarrageText(): string {
-    if (idlePhase === 'drowsy')
-      return ['有点困了…', '好想睡觉', '眼睛打架了'][Math.floor(Math.random() * 3)]
-    if (idlePhase === 'asleep')
-      return ['zzZ', '呼呼…', '睡得好香', '别吵我…'][Math.floor(Math.random() * 4)]
-    return ''
-  }
-
   function render(timestamp: number) {
     const canvas = canvasRef.value
     if (!canvas) return
@@ -137,7 +92,6 @@ export function usePetRenderer() {
     if (!ctx) return
 
     if (startTime === 0) startTime = timestamp
-    const elapsed = (timestamp - startTime) / 1000
 
     const w = window.innerWidth
     const h = window.innerHeight
@@ -152,14 +106,10 @@ export function usePetRenderer() {
     if (isVisible && !currentAction) {
       if (idleMs > IDLE_SLEEP_MS && idlePhase !== 'asleep') {
         idlePhase = 'asleep'
-        _onAction?.('Yawn')
         triggerAction('Yawn')
-        addBarrage(idleBarrageText())
       } else if (idleMs > IDLE_YAWN_MS && idlePhase === 'awake') {
         idlePhase = 'drowsy'
-        _onAction?.('Yawn')
         triggerAction('Yawn')
-        addBarrage(idleBarrageText())
       }
     }
 
@@ -180,8 +130,6 @@ export function usePetRenderer() {
     }
 
     // ── Draw overlays ──
-    drawBarrages(ctx, elapsed, w, h, barrages)
-
     if (_moveMode) {
       drawMoveIndicator(ctx, w, h)
     }
@@ -194,7 +142,9 @@ export function usePetRenderer() {
     if (_frameTimes.length > 1) {
       _fps = Math.round((_frameTimes.length - 1) / ((nowPerf - _frameTimes[0]) / 1000))
     }
-    drawFps(ctx, w, _fps, currentPetAction, idlePhase)
+    if (_showFps) {
+      drawFps(ctx, w, _fps, currentPetAction, idlePhase)
+    }
 
     animId = requestAnimationFrame(render)
   }
@@ -216,59 +166,22 @@ export function usePetRenderer() {
     _moveMode = v
   }
 
+  function setShowFps(v: boolean) {
+    _showFps = v
+  }
+
   onUnmounted(stop)
 
   return {
     canvasRef, start, stop,
-    triggerDance, triggerAction, addBarrage,
+    triggerDance, triggerAction,
     setMoveMode, notifyInteraction, setVisible, setMousePos,
     setActionCallback, setMouseCallback,
+    setShowFps,
   }
 }
 
 // ── Overlay drawing functions ──
-
-function drawBarrages(
-  ctx: CanvasRenderingContext2D,
-  elapsed: number,
-  w: number,
-  h: number,
-  items: BarrageItem[],
-) {
-  if (items.length === 0) return
-
-  const fontSize = Math.max(13, Math.floor(h / 28))
-  const lineHeight = fontSize * 1.6
-  const tracksTop = h * 0.68
-
-  ctx.save()
-  ctx.font = `bold ${fontSize}px "Microsoft YaHei", sans-serif`
-  ctx.textBaseline = 'middle'
-  ctx.textAlign = 'left'
-
-  for (const item of items) {
-    const age = elapsed - item.birth
-    const x = w - age * item.speed
-    const y = tracksTop + item.track * lineHeight
-
-    if (x + fontSize * item.text.length * 0.6 < 0) continue
-    if (x > w) continue
-
-    let alpha = 1
-    if (age < 0.3) alpha = age / 0.3
-
-    ctx.globalAlpha = alpha
-    ctx.strokeStyle = 'rgba(0,0,0,0.6)'
-    ctx.lineWidth = 3
-    ctx.lineJoin = 'round'
-    ctx.strokeText(item.text, x, y)
-    ctx.fillStyle = '#FFFFFF'
-    ctx.fillText(item.text, x, y)
-  }
-
-  ctx.globalAlpha = 1
-  ctx.restore()
-}
 
 function drawMoveIndicator(
   ctx: CanvasRenderingContext2D,

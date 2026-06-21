@@ -13,8 +13,8 @@
     "windows": [
       {
         "title": "桌面显眼包",
-        "width": 400,
-        "height": 550,
+        "width": 195,
+        "height": 370,
         "decorations": false,
         "transparent": true,
         "alwaysOnTop": true,

@@ -3,15 +3,16 @@ import { PhysicalPosition, getCurrentWindow } from '@tauri-apps/api/window'
 
 export type AutoBehavior = 'idle' | 'walking' | 'climbing' | 'flying'
 
-const WINDOW_W = 400
+const WINDOW_W = 195
 
 export function usePetAutoBehavior() {
   const behavior = ref<AutoBehavior>('idle')
   const behaviorLabel = ref('')
+  const enabled = ref(true)
   let _running = false
 
   async function startRandomBehavior() {
-    if (_running) return
+    if (_running || !enabled.value) return
     const choices: AutoBehavior[] = ['walking', 'climbing', 'flying']
     const chosen = choices[Math.floor(Math.random() * choices.length)]
     await startBehavior(chosen)
@@ -94,7 +95,7 @@ export function usePetAutoBehavior() {
     })
   }
 
-  return { behavior, behaviorLabel, startRandomBehavior, startBehavior }
+  return { behavior, behaviorLabel, enabled, startRandomBehavior, startBehavior }
 }
 
 function clamp(v: number, min: number, max: number) {

@@ -22,6 +22,7 @@ const emit = defineEmits<{
 
 const menuRef = ref<HTMLElement | null>(null)
 const openSubmenu = ref<number | null>(null)
+const submenuFlip = ref(false)
 
 function onItemClick(item: MenuAction) {
   if (item.disabled) return
@@ -32,6 +33,15 @@ function onItemClick(item: MenuAction) {
 
 function onSubmenuEnter(idx: number) {
   openSubmenu.value = idx
+  // Check if submenu overflows right edge, flip left if so
+  queueMicrotask(() => {
+    const el = menuRef.value
+    if (!el) return
+    const sub = el.querySelector('.ctx-submenu') as HTMLElement | null
+    if (!sub) return
+    const subRect = sub.getBoundingClientRect()
+    submenuFlip.value = subRect.right > window.innerWidth
+  })
 }
 
 function onSubmenuLeave() {
@@ -60,10 +70,16 @@ onMounted(() => {
   if (el) {
     const rect = el.getBoundingClientRect()
     if (rect.right > window.innerWidth) {
-      el.style.left = `${window.innerWidth - rect.width - 8}px`
+      el.style.left = `${Math.max(8, window.innerWidth - rect.width - 8)}px`
     }
     if (rect.bottom > window.innerHeight) {
-      el.style.top = `${window.innerHeight - rect.height - 8}px`
+      el.style.top = `${Math.max(8, window.innerHeight - rect.height - 8)}px`
+    }
+    if (rect.left < 0) {
+      el.style.left = '8px'
+    }
+    if (rect.top < 0) {
+      el.style.top = '8px'
     }
   }
   setTimeout(() => document.addEventListener('click', onClickOutside), 0)
@@ -100,6 +116,7 @@ onUnmounted(() => {
       <div
         v-if="item.children && openSubmenu === idx"
         class="ctx-submenu"
+        :class="{ 'flip-left': submenuFlip }"
       >
         <div
           v-for="(child, ci) in item.children"
@@ -183,5 +200,11 @@ onUnmounted(() => {
   padding: 6px;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
   margin-left: 4px;
+}
+.ctx-submenu.flip-left {
+  left: auto;
+  right: 100%;
+  margin-left: 0;
+  margin-right: 4px;
 }
 </style>
